@@ -21,6 +21,7 @@ type QueueWriter[T comparable] struct {
 	entrySize     int
 	runningCount  int
 	syncStrategy  SyncStrategy[T]
+	pagesize      int
 }
 
 type queueEntry[T comparable] struct {
@@ -78,6 +79,8 @@ func Create[T comparable](file string, runningCount int64, syncStrategy SyncStra
 	queue.runningCount = int(runningCount)
 	queue.currentOffset = 0
 	queue.syncStrategy = syncStrategy
+	queue.totalOffset = 0
+	queue.pagesize = os.Getpagesize()
 
 	return queue, nil
 }
@@ -145,14 +148,21 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 			return fasterror.Create("Failed to extended storage file via ftruncate")
 		}
 
+		// page size math
+		desiredOffset := queue.totalOffset+int64(regionSize)
+		pageCountBelowOffset := desiredOffset / int64(queue.pagesize)
+		pageBasedOffset := pageCountBelowOffset * int64(queue.pagesize)
+		pageDesiredOffsetDelta := desiredOffset - pageBasedOffset
+
 		newRegion, err := unix.Mmap(
 			queue.fd,
-			queue.totalOffset+int64(regionSize),
-			int(regionSize),
+			pageBasedOffset,
+			int(regionSize)+int(pageDesiredOffsetDelta),
 			unix.PROT_READ|unix.PROT_WRITE,
 			unix.MAP_SHARED,
 		)
 		if err != nil {
+			fmt.Printf("Err: %v\n", err)
 			return fasterror.Create("Failed to create extended mmap")
 		}
 
@@ -166,7 +176,7 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 		}
 
 		queue.totalOffset += int64(regionSize)
-		queue.currentOffset = 0
+		queue.currentOffset = pageDesiredOffsetDelta
 		queue.mmapedRegion = newRegion
 	}
 
@@ -182,7 +192,7 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 	ptr.entry = t
 	atomic.StoreUint64(&ptr.statusCrc32, (uint64(QueueEntryStatusPrePublished)<<32)+uint64(crc))
 	queue.currentOffset += int64(queue.entrySize)
-	
+
 	// sync
 	err = queue.syncStrategy.Sync(queue.fd, queue.mmapedRegion)
 	if !err.IsNil() {
