@@ -71,7 +71,7 @@ func BenchmarkQueueReader(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	
+
 	for i := 0; i < b.N; i++ {
 		err := q.Write(i)
 		if !err.IsNil() {
@@ -84,6 +84,10 @@ func BenchmarkQueueReader(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _, err := r.Read()
+		if !err.IsNil() {
+			log.Fatalf(err.ToString())
+		}
+		err = r.FinishRead()
 		if !err.IsNil() {
 			log.Fatalf(err.ToString())
 		}

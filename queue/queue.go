@@ -305,6 +305,9 @@ func Reader[T comparable](file string, runningCount int64, syncStrategy SyncStra
 //
 // When hitting a corrupt entry the data isn't modified
 // and the reader cannot continue
+//
+// The read cursor is not advanced. Use [QueueReader.FinishRead]
+// to advance the read pointer
 func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
 	for {
 		var t T
@@ -373,7 +376,6 @@ func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
 				if !err.IsNil() {
 					return t, status, err
 				}
-				queue.currentOffset += int64(queue.entrySize)
 				return queue.tmp.entry, status, fasterror.Nil()
 			}
 		}
@@ -382,5 +384,25 @@ func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
 
 // FinishRead marks the current entry as Consumed
 // and syncs that change in accordance with the sync strategy
-// func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
-// }
+//
+// if the sync strategy produces an error the read cursor is not
+// advanced
+func (queue *QueueReader[T]) FinishRead() fasterror.Error {
+	memPtr := &queue.mmapedRegion[queue.currentOffset]
+	ptr := (*checkedQueueEntry[T])(unsafe.Pointer(memPtr))
+	queue.tmp = queueEntry[T]{
+		entry:  ptr.entry,
+		status: EntryStatusConsumed,
+	}
+	entryPtr := unsafe.Pointer(&queue.tmp)
+	entryDataSlice := unsafe.Slice((*byte)(entryPtr), unsafe.Sizeof(queue.tmp))
+	consumedCrc := crc32.Checksum(entryDataSlice, koopman)
+	consumingStatusCrc := (uint64(queue.tmp.status) << 32) + uint64(consumedCrc)
+	atomic.StoreUint64(&ptr.statusCrc32, consumingStatusCrc)
+	err := queue.syncStrategy.Sync(queue.fd, queue.mmapedRegion)
+	if !err.IsNil() {
+		return err
+	}
+	queue.currentOffset += int64(queue.entrySize)
+	return fasterror.Nil()
+}
