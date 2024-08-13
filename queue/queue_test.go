@@ -18,6 +18,10 @@ func TestQueueWriter_write(t *testing.T) {
 			t.Fatalf("Failed to write %d: %s", i, err.ToString())
 		}
 	}
+	err = q.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestQueueReader_read(t *testing.T) {
@@ -45,6 +49,19 @@ func TestQueueReader_read(t *testing.T) {
 		if entry != i {
 			t.Fatalf("Invalid data readback %d: %d", i, entry)
 		}
+		err = r.FinishRead()
+		if !err.IsNil() {
+			t.Fatalf("Failed to finish read %d: %s", i, err.ToString())
+		}
+	}
+
+	err = q.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -62,6 +79,10 @@ func BenchmarkQueueWriter(b *testing.B) {
 		if !err.IsNil() {
 			log.Fatalf(err.ToString())
 		}
+	}
+	err = q.Close()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -91,5 +112,14 @@ func BenchmarkQueueReader(b *testing.B) {
 		if !err.IsNil() {
 			log.Fatalf(err.ToString())
 		}
+	}
+
+	err = q.Close()
+	if err != nil {
+		b.Fatal(err)
+	}
+	r.Close()
+	if err != nil {
+		b.Fatal(err)
 	}
 }

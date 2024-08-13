@@ -226,6 +226,22 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 	return fasterror.Nil()
 }
 
+// Close releases all open resources.
+// 
+// Open memory is flushed to disk with MSync.
+//
+// An error leaves the Writer and its resources
+// in an undefined state.
+func (queue *QueueWriter[T]) Close() error {
+	err1 := unix.Msync(queue.mmapedRegion, unix.MS_SYNC)
+	err2 := unix.Munmap(queue.mmapedRegion)
+	err3 := unix.Close(queue.fd)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return fmt.Errorf("msyncerr=%v,munmaperr=%v,closeerr=%v", err1, err2, err3)
+	}
+	return nil
+}
+
 // QueueReader is the pulling side of a queue
 // it can only write
 type QueueReader[T comparable] struct {
@@ -405,4 +421,20 @@ func (queue *QueueReader[T]) FinishRead() fasterror.Error {
 	}
 	queue.currentOffset += int64(queue.entrySize)
 	return fasterror.Nil()
+}
+
+// Close releases all open resources.
+// 
+// Open memory is flushed to disk with MSync.
+//
+// An error leaves the Reader and its resources
+// in an undefined state.
+func (queue *QueueReader[T]) Close() error {
+	err1 := unix.Msync(queue.mmapedRegion, unix.MS_SYNC)
+	err2 := unix.Munmap(queue.mmapedRegion)
+	err3 := unix.Close(queue.fd)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return fmt.Errorf("msyncerr=%v,munmaperr=%v,closeerr=%v", err1, err2, err3)
+	}
+	return nil
 }
