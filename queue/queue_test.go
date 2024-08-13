@@ -7,7 +7,7 @@ import (
 )
 
 func TestQueueWriter_write(t *testing.T) {
-	dir := "." // t.TempDir()
+	dir := t.TempDir()
 	q, err := Create(fmt.Sprintf("%s/tmpfile.q", dir), 100, MAsyncTimeBased[int](uint64(time.Millisecond*10)))
 	if err != nil {
 		t.Fatal(err)
