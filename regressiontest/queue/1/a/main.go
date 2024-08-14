@@ -53,5 +53,5 @@ func main() {
 		}
 	}
 
-	latency.Display(120)
+	latency.DisplayPercentiles(120, histogram.PercentilesP9999)
 }

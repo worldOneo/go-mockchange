@@ -37,19 +37,27 @@ func (histogram *Histogram) Add(value uint64) {
 	histogram.num += 1
 }
 
+var PercentilesP99 = []float64{.50, .80, .87, .90, .97, .99}
+var PercentilesP999 = []float64{.50, .90, .97, .99, .997, .999}
+var PercentilesP9999 = []float64{.50, .99, .997, .999, .9997, .9999}
+
 func (histogram *Histogram) Display(width int) {
+	histogram.DisplayPercentiles(width, []float64{.50, .90, .99, .999})
+}
+
+func (histogram *Histogram) DisplayPercentiles(width int, percentiles []float64) {
 	maxValue := slices.Max(histogram.buckets)
 	maxHeader := len(FormatNs(int64(maxValue)))
-	maxHeaderSize := maxHeader*2 + 7
+	maxHeaderSize := maxHeader*2 + 7 + len(percentiles) + 1
 	blocks := width - maxHeaderSize
 	blockPerValue := float64(blocks) / float64(maxValue)
 
 	firstPresent := 0
 	for i, v := range histogram.buckets {
+		firstPresent = i
 		if v != 0 {
 			break
 		}
-		firstPresent = i
 	}
 	lastPresent := len(histogram.buckets) - 1
 	for lastPresent > 0 {
@@ -59,7 +67,25 @@ func (histogram *Histogram) Display(width int) {
 		lastPresent -= 1
 	}
 
+	for i, percentile := range percentiles {
+		fmt.Printf("%sp%f\n", strings.Repeat("|", i), percentile*100)
+	}
+
+	totalEntries := uint64(0)
 	for i, v := range histogram.buckets[firstPresent : lastPresent+1] {
+		for _, percentile := range percentiles {
+			if float64(totalEntries)/float64(histogram.num) < percentile {
+				if float64(totalEntries+v)/float64(histogram.num) >= percentile {
+					fmt.Print("*")
+				} else {
+					fmt.Print("|")
+				}
+			} else {
+				fmt.Print(" ")
+			}
+		}
+		totalEntries += v
+
 		bar := strings.Repeat("#", int(blockPerValue*float64(v)))
 		lower := int64(0)
 
@@ -72,7 +98,7 @@ func (histogram *Histogram) Display(width int) {
 		header := fmt.Sprintf("%s - %s", FormatNs(int64(lower)), FormatNs(int64(upper)))
 		percent := fmt.Sprintf("%06.3e ", float64(v)/float64(histogram.num))
 		buff := strings.Repeat(" ", maxHeaderSize-len(header))
-		fmt.Printf("%s%s%s|%s\n", header, buff, percent, bar)
+		fmt.Printf("|%s%s%s|%s\n", header, buff, percent, bar)
 	}
 }
 

@@ -57,6 +57,5 @@ func main() {
 	delta := histogram.Nanos() - start
 	avgRoundTrip := delta / 10_000_000
 	log.Printf("Average time: %dns", avgRoundTrip)
-	latency.Display(120)
-
+	latency.DisplayPercentiles(120, histogram.PercentilesP9999)
 }
