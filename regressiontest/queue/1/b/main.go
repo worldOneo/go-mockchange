@@ -38,26 +38,15 @@ func main() {
 
 	log.Printf("Measuring round trip latency")
 	start := histogram.Nanos()
-	{
+	for i := 0; i < 10_000_000; i++ {
 		now := histogram.Nanos()
 		err := writer.Write(now)
 		if !err.IsNil() {
 			log.Fatalf("Failed to write: %v", err.ToString())
 		}
-		err = writer.Write(now)
-		if !err.IsNil() {
-			log.Fatalf("Failed to write: %v", err.ToString())
-		}
-	}
-	for i := 0; i < 9_999_998; i++ {
-		now := histogram.Nanos()
-		err := writer.Write(now)
-		if !err.IsNil() {
-			log.Fatalf("Failed to write: %v", err.ToString())
-		}
-		v, _, err := reader.Read()
-		if !err.IsNil() {
-			log.Fatalf("Failed to read: %v", err.ToString())
+		v, status, err := reader.Read()
+		if !err.IsNil() || v != now{
+			log.Fatalf("Failed to read: %v, status: %d", err.ToString(), status)
 		}
 		latency.Add(uint64(histogram.Nanos() - v - 2*timingDuration))
 		err = reader.FinishRead()
