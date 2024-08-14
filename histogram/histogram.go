@@ -44,16 +44,33 @@ func (histogram *Histogram) Display(width int) {
 	blocks := width - maxHeaderSize
 	blockPerValue := float64(blocks) / float64(maxValue)
 
+	firstPresent := 0
 	for i, v := range histogram.buckets {
+		if v != 0 {
+			break
+		}
+		firstPresent = i
+	}
+	lastPresent := len(histogram.buckets) - 1
+	for lastPresent > 0 {
+		if histogram.buckets[lastPresent] != 0 {
+			break
+		}
+		lastPresent -= 1
+	}
+
+	for i, v := range histogram.buckets[firstPresent : lastPresent+1] {
 		bar := strings.Repeat("#", int(blockPerValue*float64(v)))
 		lower := int64(0)
-		if i > 0 {
-			lower = 1 << (i - 1)
+
+		bit := i + firstPresent
+		if bit > 0 {
+			lower = 1 << (bit - 1)
 		}
-		upper := int64(1) << i
+		upper := int64(1) << bit
 
 		header := fmt.Sprintf("%s - %s", FormatNs(int64(lower)), FormatNs(int64(upper)))
-		percent := fmt.Sprintf("%06.3f%% ", float64(v*100)/float64(histogram.num))
+		percent := fmt.Sprintf("%06.3e ", float64(v)/float64(histogram.num))
 		buff := strings.Repeat(" ", maxHeaderSize-len(header))
 		fmt.Printf("%s%s%s|%s\n", header, buff, percent, bar)
 	}
