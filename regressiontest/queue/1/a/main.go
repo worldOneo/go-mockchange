@@ -53,9 +53,5 @@ func main() {
 		}
 	}
 
-	// TODO: it appears as if two different processors dont share the same
-	// time, maybe maybe
 	latency.Display(120)
-
-
 }

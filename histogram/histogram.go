@@ -39,22 +39,23 @@ func (histogram *Histogram) Add(value uint64) {
 
 func (histogram *Histogram) Display(width int) {
 	maxValue := slices.Max(histogram.buckets)
-	maxHeader := len(strconv.Itoa(1 << len(histogram.buckets)))
-	maxHeaderSize :=  maxHeader*2 + 10
+	maxHeader := len(FormatNs(int64(maxValue)))
+	maxHeaderSize := maxHeader*2 + 7
 	blocks := width - maxHeaderSize
 	blockPerValue := float64(blocks) / float64(maxValue)
 
 	for i, v := range histogram.buckets {
 		bar := strings.Repeat("#", int(blockPerValue*float64(v)))
-		lower := 0
+		lower := int64(0)
 		if i > 0 {
 			lower = 1 << (i - 1)
 		}
-		upper := 1 << i
-		
-		header := fmt.Sprintf("%d-%d(%.2f%%)", lower, upper, float64(v*100)/float64(histogram.num))
-		buff := strings.Repeat(" ", maxHeaderSize - len(header))
-		fmt.Printf("%s%s|%s\n", header, buff, bar)
+		upper := int64(1) << i
+
+		header := fmt.Sprintf("%s - %s", FormatNs(int64(lower)), FormatNs(int64(upper)))
+		percent := fmt.Sprintf("%06.3f%% ", float64(v*100)/float64(histogram.num))
+		buff := strings.Repeat(" ", maxHeaderSize-len(header))
+		fmt.Printf("%s%s%s|%s\n", header, buff, percent, bar)
 	}
 }
 
@@ -90,7 +91,42 @@ func CalculateNanoTimeError() int64 {
 	return avgTimeTaken
 }
 
-
 func Nanos() int64 {
 	return time.Now().UnixNano()
+}
+
+// FormatNs will format Nanos to a precission of 3 digits
+// or to full seconds if the timeframe is larger than 99 seconds
+func FormatNs(ns int64) string {
+	if ns < 1000 {
+		return fmt.Sprintf("%d ns", ns)
+	}
+	digits := len(strconv.FormatInt(ns, 10))
+	var div int64 = 1
+	truncate := 0
+	for digits-truncate > 3 {
+		div *= 10
+		truncate += 1
+	}
+	strDigits := strconv.FormatInt(ns/div, 10)
+	strUnit := "ns"
+	if truncate > 0 {
+		strUnit = "us"
+	}
+	if truncate > 3 {
+		strUnit = "ms"
+	}
+	if truncate > 6 {
+		strUnit = "s "
+	}
+	if truncate == 0 || truncate == 3 || truncate == 6 {
+		return fmt.Sprintf("%s %s", strDigits[0:3], strUnit)
+	}
+	if truncate == 1 || truncate == 4 || truncate == 7 {
+		return fmt.Sprintf("%c.%c%c%s", strDigits[0], strDigits[1], strDigits[2], strUnit)
+	}
+	if truncate == 2 || truncate == 5 || truncate == 8 {
+		return fmt.Sprintf("%c%c.%c%s", strDigits[0], strDigits[1], strDigits[2], strUnit)
+	}
+	return fmt.Sprintf("%d s ", ns/1_000_000_000)
 }

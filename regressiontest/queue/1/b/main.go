@@ -45,7 +45,7 @@ func main() {
 			log.Fatalf("Failed to write: %v", err.ToString())
 		}
 		v, status, err := reader.Read()
-		if !err.IsNil() || v != now{
+		if !err.IsNil() || v != now {
 			log.Fatalf("Failed to read: %v, status: %d", err.ToString(), status)
 		}
 		latency.Add(uint64(histogram.Nanos() - v - 2*timingDuration))
@@ -58,6 +58,5 @@ func main() {
 	avgRoundTrip := delta / 10_000_000
 	log.Printf("Average time: %dns", avgRoundTrip)
 	latency.Display(120)
-	// TODO: histogram is always not even close to representing avg time, whats up with that?
 
 }
