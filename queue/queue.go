@@ -127,6 +127,11 @@ func moveFdMapping(fd int, oldRegion []byte, regionSize int64, totalOffset int64
 		return 0, data, fasterror.Create("Failed to async msync mmaped region for new allocation")
 	}
 
+	err = unix.Munmap(oldRegion)
+	if err != nil {
+		return 0, data, fasterror.Create("Failed to unmap the old region before extending")
+	}
+
 	if ftrunc {
 		err = unix.Ftruncate(fd, totalOffset+regionSize*2)
 		if err != nil {
@@ -138,30 +143,21 @@ func moveFdMapping(fd int, oldRegion []byte, regionSize int64, totalOffset int64
 	desiredOffset := totalOffset + int64(regionSize)
 	pageCountBelowOffset := desiredOffset / int64(pageSize)
 	pageBasedOffset := pageCountBelowOffset * int64(pageSize)
-	pageDesiredOffsetDelta := desiredOffset - pageBasedOffset
+	pageDesireOffset := desiredOffset - pageBasedOffset
 
 	newRegion, err := unix.Mmap(
 		fd,
 		pageBasedOffset,
-		int(regionSize)+int(pageDesiredOffsetDelta),
+		int(regionSize+pageDesireOffset),
 		unix.PROT_READ|unix.PROT_WRITE,
 		unix.MAP_SHARED,
 	)
 	if err != nil {
-		fmt.Printf("Err: %v\n", err)
 		return 0, data, fasterror.Create("Failed to create extended mmap")
 	}
 
-	err = unix.Munmap(oldRegion)
-	if err != nil {
-		err = unix.Munmap(newRegion)
-		if err != nil {
-			return 0, data, fasterror.Create("Failed to unmap new region after failing to unmap old region after extending")
-		}
-		return 0, data, fasterror.Create("Failed to unmap the old region after extending")
-	}
 
-	return pageDesiredOffsetDelta, newRegion, fasterror.Nil()
+	return pageDesireOffset, newRegion, fasterror.Nil()
 }
 
 // Write writes a new entry to the queue
@@ -182,7 +178,7 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 		return err
 	}
 
-	if queue.currentOffset >= int64(len(queue.mmapedRegion)) {
+	if queue.currentOffset+int64(queue.entrySize) >= int64(len(queue.mmapedRegion)) {
 		regionSize := int64(queue.entrySize) * int64(queue.runningCount)
 		delta, newRegion, err := moveFdMapping(
 			queue.fd,
@@ -211,13 +207,13 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 	ptr := (*checkedQueueEntry[T])(unsafe.Pointer(&queue.mmapedRegion[queue.currentOffset]))
 	ptr.entry = t
 	atomic.StoreUint64(&ptr.statusCrc32, (uint64(EntryStatusPrePublished)<<32)+uint64(crc))
-	queue.currentOffset += int64(queue.entrySize)
 
 	// sync
 	err = queue.syncStrategy.Sync(queue.fd, queue.mmapedRegion)
 	if !err.IsNil() {
 		return err
 	}
+	queue.currentOffset += int64(queue.entrySize)
 
 	// ready to consume
 	queue.tmp.status = EntryStatusPublished
@@ -227,7 +223,7 @@ func (queue *QueueWriter[T]) Write(t T) fasterror.Error {
 }
 
 // Close releases all open resources.
-// 
+//
 // Open memory is flushed to disk with MSync.
 //
 // An error leaves the Writer and its resources
@@ -329,14 +325,8 @@ func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
 		var t T
 		status := EntryStatusCorrupted
 		regionSize := int64(queue.entrySize) * int64(queue.runningCount)
-		for queue.fstat.Size < queue.totalOffset+regionSize {
-			err := unix.Fstat(queue.fd, &queue.fstat)
-			if err != nil {
-				return t, status, fasterror.Create("Failed to fstat queue file")
-			}
-		}
 
-		if queue.currentOffset >= int64(len(queue.mmapedRegion)) {
+		if queue.currentOffset+int64(queue.entrySize) >= int64(len(queue.mmapedRegion)) {
 			delta, newRegion, err := moveFdMapping(
 				queue.fd,
 				queue.mmapedRegion,
@@ -351,6 +341,13 @@ func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
 			queue.totalOffset += regionSize
 			queue.currentOffset = delta
 			queue.mmapedRegion = newRegion
+		}
+
+		for queue.fstat.Size < queue.totalOffset+regionSize {
+			err := unix.Fstat(queue.fd, &queue.fstat)
+			if err != nil {
+				return t, status, fasterror.Create("Failed to fstat queue file")
+			}
 		}
 
 		memPtr := &queue.mmapedRegion[queue.currentOffset]
@@ -424,7 +421,7 @@ func (queue *QueueReader[T]) FinishRead() fasterror.Error {
 }
 
 // Close releases all open resources.
-// 
+//
 // Open memory is flushed to disk with MSync.
 //
 // An error leaves the Reader and its resources
