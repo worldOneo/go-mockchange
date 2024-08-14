@@ -156,7 +156,6 @@ func moveFdMapping(fd int, oldRegion []byte, regionSize int64, totalOffset int64
 		return 0, data, fasterror.Create("Failed to create extended mmap")
 	}
 
-
 	return pageDesireOffset, newRegion, fasterror.Nil()
 }
 
@@ -367,16 +366,19 @@ func (queue *QueueReader[T]) Read() (T, QueueStatus, fasterror.Error) {
 			entryDataSlice := unsafe.Slice((*byte)(entryPtr), unsafe.Sizeof(queue.tmp))
 			checkedCrc := crc32.Checksum(entryDataSlice, koopman)
 
-			if receivedCrc != checkedCrc {
-				return queue.tmp.entry, EntryStatusCorrupted, fasterror.Nil()
-			}
 			if status == EntryStatusConsumed {
+				if receivedCrc != checkedCrc {
+					return queue.tmp.entry, EntryStatusCorrupted, fasterror.Nil()
+				}
 				break
 			}
 
 			statusReadableRecovery := status == EntryStatusPrePublished || status == EntryStatusConsuming
 
 			if (statusReadableRecovery && queue.recovery) || (status == EntryStatusPublished) {
+				if receivedCrc != checkedCrc {
+					return queue.tmp.entry, EntryStatusCorrupted, fasterror.Nil()
+				}
 				queue.tmp.status = EntryStatusConsuming
 				consumingCrc := crc32.Checksum(entryDataSlice, koopman)
 				consumingStatusCrc := (uint64(EntryStatusConsuming) << 32) + uint64(consumingCrc)
