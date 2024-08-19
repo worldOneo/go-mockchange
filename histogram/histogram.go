@@ -47,7 +47,7 @@ func (histogram *Histogram) Display(width int) {
 
 func (histogram *Histogram) DisplayPercentiles(width int, percentiles []float64) {
 	maxValue := slices.Max(histogram.buckets)
-	maxHeader := len(FormatNs(int64(maxValue)))
+	maxHeader := len([]rune(FormatNs(int64(maxValue))))
 	maxHeaderSize := maxHeader*2 + 7 + len(percentiles) + 1
 	blocks := width - maxHeaderSize
 	blockPerValue := float64(blocks) / float64(maxValue)
@@ -154,7 +154,7 @@ func FormatNs(ns int64) string {
 	strDigits := strconv.FormatInt(ns/div, 10)
 	strUnit := "ns"
 	if truncate > 0 {
-		strUnit = "us"
+		strUnit = "μs"
 	}
 	if truncate > 3 {
 		strUnit = "ms"
